@@ -58,7 +58,7 @@ Remove an external repository:
 git external rm <path>
 </pre>
 
-## How to build
+## Installation from source
 
 <pre class="terminal">
 git clone git://github.com/obazoud/git-external.git
