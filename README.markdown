@@ -64,7 +64,7 @@ git external rm <path>
 git clone git://github.com/obazoud/git-external.git
 cd git-external
 git checkout develop
-gem build obazoud-git-external.gemspec && gem install obazoud-git-external-0.3.0.gem --no-ri --no-rdoc
+gem build obazoud-git-external.gemspec && gem install obazoud-git-external-0.3.1.gem --no-ri --no-rdoc
 </pre>
 
 And voilà!
