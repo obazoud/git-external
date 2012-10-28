@@ -232,22 +232,7 @@ end
 
 #########
 def normalize_url(url)
-  if url =~ /^\./
-    origin_url = `git config --get remote.origin.url`.chomp
-
-    unless origin_url =~ /^\w+:\/\//
-      if origin_url =~ /^([^:\/]+):([^:]+)/
-        origin_url = "ssh://#{$1}/#{$2}"
-      end
-    end
-
-    require 'uri'
-    uri = URI.parse URI.encode origin_url
-    uri.path = File.expand_path(url, uri.path)
-    uri.to_s
-  else
-    url
-  end
+  url
 end
 
 def execute(cmd, opts=[], path=Dir.getwd, redirect='2>&1')
