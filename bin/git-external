@@ -1,9 +1,58 @@
 #!/usr/bin/env ruby
 # encoding: utf-8
 
-$root_dir = `git rev-parse --show-toplevel`.chomp
-$externals_file = "#{$root_dir}/.gitexternals"
-$ignore_file = "#{$root_dir}/.gitignore"
+require 'rbconfig'
+
+module OS
+  class << self
+    def is?(what)
+      what === RbConfig::CONFIG['host_os']
+    end
+    alias is is?
+
+    def to_s
+      RbConfig::CONFIG['host_os']
+    end
+  end
+
+  module_function
+
+  def linux?
+    OS.is? /linux|cygwin/
+  end
+
+  def mac?
+    OS.is? /mac|darwin/
+  end
+
+  def bsd?
+    OS.is? /bsd/
+  end
+
+  def windows?
+    OS.is? /mswin|win|mingw|mingw32/
+  end
+
+  def solaris?
+    OS.is? /solaris|sunos/
+  end
+
+  def posix?
+    linux? or mac? or bsd? or solaris? # or Process.respond_to?(:fork)
+  end
+end
+
+if OS.posix?
+  $root_dir = `git rev-parse --show-toplevel`.chomp + '/'
+  $externals_file = "#{$root_dir}.gitexternals"
+  $ignore_file = "#{$root_dir}.gitignore"
+else
+  # puts "Not posix os, you must run git-external from top level directory"
+  $root_dir = ''
+  $externals_file = "#{$root_dir}.gitexternals".gsub(' ', '\\ ')
+  $ignore_file = "#{$root_dir}.gitignore".gsub(' ', '\\ ')
+end
+
 $configurations = {}
 
 def usage
@@ -15,56 +64,37 @@ def usage
   puts "   or: git external list"
 end
 
-def load_configuration
-  if File.file? $externals_file
-    lines = `git config -l -f #{$externals_file}`.split(/\n/)
-    $configurations = {}
-    lines.each do |line|
-      if line =~ /^external\.([^$]+)\.([^=]+)=(.*)$/
-        $configurations[$1.chomp] ||= {}
-        $configurations[$1.chomp][$2.chomp] = $3.chomp
-      end
+# Load .gitexternals
+def load_configuration(file)
+  $configurations = {}
+  linesExit, lines = execute('git config', ['--list', '--file', file])
+  lines.each do |line|
+    if line =~ /^external\.([^$]+)\.([^=]+)=(.*)$/
+      $configurations[$1.chomp] ||= {}
+      $configurations[$1.chomp][$2.chomp] = $3.chomp
     end
   end
 end
 
+# Print .gitexternals content
 def print_configuration
   $configurations.each do |name, config|
-    puts name
+    puts "* #{name}"
     config.each do |key, value|
       puts "\t#{key}: #{value}"
     end
   end
 end
 
-def normalize_url(url)
-  if url =~ /^\./
-    origin_url = `git config --get remote.origin.url`.chomp
-
-    unless origin_url =~ /^\w+:\/\//
-      if origin_url =~ /^([^:\/]+):([^:]+)/
-        origin_url = "ssh://#{$1}/#{$2}"
-      end
-    end
-
-    require 'uri'
-    uri = URI.parse URI.encode origin_url
-    uri.path = File.expand_path(url, uri.path)
-    uri.to_s
-  else
-    url
-  end
-end
-
 # Check for uncommitted changes
 def uncommitted_changes?(path)
-    diffExit, diff = execute("cd #{path}; git diff-index --quiet HEAD")
-    return ((diffExit == 1) ? true : false)
+  diffExit, diff = execute('git diff-index', ['--quiet', 'HEAD'], path)
+  return ((diffExit == 1) ? true : false)
 end
 
 # Check if a branch exists
 def branch_exists(path, branch)
-    branches = `cd #{path}; git branch`
+    branchesExit, branches = execute('git branch', [], path)
     regex = Regexp.new('[\\n\\s\\*]+' + Regexp.escape(branch.to_s) + '\\n')
     result = ((branches =~ regex) ? true : false)
     return result
@@ -77,17 +107,17 @@ def init_external(url, path, branch='master')
   else
     FileUtils.makedirs File.dirname(path)
     url = normalize_url url
-    system "git clone #{url} #{path}"
+    execute('git clone', ["#{url}", path], Dir.getwd, '')
 
     # Create a local tracking branch if it doesn't exist already
     unless branch_exists(path, branch)
       puts "- Creating local tracking branch: #{branch} -> origin/#{branch}"
-      system "cd #{path}; git branch checkout --track #{branch} origin/#{branch}"
+      execute('git branch', ['checkout',  '--track', "#{branch}", "origin/#{branch}"], path)
     end
 
     # Check out the local branch
     puts "- Checkout local branch: #{branch}"
-    system "cd #{path}; git checkout #{branch}"
+    execute('git checkout', ["#{branch}"], path)
   end
 end
 
@@ -98,18 +128,9 @@ def update_external(url, path, branch='master')
     if uncommitted_changes?(path)
       puts "#{path} - uncommitted changes detected, can not update repository"
     else
-     `cd #{path}; git pull origin #{branch}`
+      execute('git pull', ['origin', "#{branch}"], path, '')
     end
   end
-end
-
-def execute(cmd)
-  values = []
-  IO.popen(cmd) do |f|
-    tmp = f.gets
-    values.push(tmp.gsub(/\r/, '').gsub(/\n/, '')) unless tmp.nil?
-  end
-  return $?.exitstatus, values
 end
 
 def command_status
@@ -120,8 +141,11 @@ def command_status
     url = config["url"]
     path = config["path"]
 
-    gitBranchExit, gitBranch = execute("cd #{path} && git config \"branch.$(git symbolic-ref HEAD --short).merge\" | sed \"s/refs\\/heads\\///g\"")
-    gitRemoteExit, gitRemote = execute("cd #{path} && git config \"remote.$(git config \"branch.$(git symbolic-ref HEAD --short).remote\").url\"");
+    symbolicExit, symbolic = execute('git symbolic-ref', ['HEAD', '--short'], path)
+    gitBranchExit, gitBranch = execute('git config', ["branch.#{symbolic}.merge"], path)
+    gitBranch = gitBranch.gsub('refs/heads/', '')
+    remoteExit, remote = execute('git config', ["branch.#{symbolic}.remote"], path)
+    gitRemoteExit, gitRemote = execute('git config', ["remote.#{remote}.url"], path)
 
     if uncommitted_changes?(path)
       changesString = "(Uncommitted Changes) "
@@ -129,20 +153,20 @@ def command_status
       changesString = ""
     end
 
-    if gitBranchExit != 0 && gitRemoteExit != 0
-      puts "  ✗ #{path}: exit code #{gitBranchExit}, #{gitRemoteExit}"
+    if gitBranchExit != 0 && gitBranchExit != 1 && gitRemoteExit != 0 && gitRemoteExit != 1
+      puts "  ✗ #{path} -- exit code #{gitBranchExit}, #{gitRemoteExit}"
       broken += 1
     else
-      if branch == gitBranch[0]
-        if url == gitRemote[0]
+      if branch == gitBranch
+        if url == gitRemote
           puts "  ✓ #{path} #{changesString}"
           ok += 1
         else
-          puts "  ✗ #{path} #{changesString} -- expected url '#{url}' but was '#{gitRemote[0]}'"
+          puts "  ✗ #{path} #{changesString} -- expected url '#{url}' but was '#{gitRemote}'"
           broken +=1
         end
       else
-        puts "  ✗ #{path} #{changesString} -- expected branch '#{branch}' but was '#{gitBranch[0]}'"
+        puts "  ✗ #{path} #{changesString} -- expected branch '#{branch}' but was '#{gitBranch}'"
         broken +=1
       end
     end
@@ -152,23 +176,31 @@ end
 
 def command_add(url, path, branch='master')
   command_rm(path)
-  `git config -f #{$externals_file} --add external.#{path}.path #{path}`
-  `git config -f #{$externals_file} --add external.#{path}.url #{url}`
-  `git config -f #{$externals_file} --add external.#{path}.branch #{branch}`
-  `echo "#{path}" >> #{$ignore_file}`
+  execute('git config', ['--file', $externals_file, '--add', "external.#{path}.path", "#{path}"])
+  execute('git config', ['--file', $externals_file, '--add', "external.#{path}.url", "#{url}"])
+  execute('git config', ['--file', $externals_file, '--add', "external.#{path}.branch", "#{branch}"])
+
+  File.open("#{$ignore_file}", 'a+') do |f|
+    f.puts("#{path}")
+  end
+
 end
 
 def command_rm(path)
-  if File.file? $externals_file
-    `git config -f #{$externals_file} --unset external.#{path}.path`
-    `git config -f #{$externals_file} --unset external.#{path}.url`
-    `git config -f #{$externals_file} --unset external.#{path}.branch`
-    `git config -f #{$externals_file} --remove-section external.#{path} > /dev/null 2>&1`
-    File.delete $externals_file if `wc -l #{$externals_file}`.chomp.to_i == 0
-  end
+  execute('git config', ['--file', $externals_file, '--unset', "external.#{path}.path"])
+  execute('git config', ['--file', $externals_file, '--unset', "external.#{path}.url"])
+  execute('git config', ['--file', $externals_file, '--unset', "external.#{path}.branch"])
+  execute('git config', ['--file', $externals_file, '--remove-section', "external.#{path}"])
+
   if File.file? $ignore_file
-    # Remove entry from .gitignore file
-    `perl -pi -e 's/\\Q#{path.gsub(/\//, '\/')}\\E\n//g' #{$ignore_file}`
+    ignores = []
+    File.open($ignore_file, 'r').each_line do |line|
+      ignores.push line.gsub(/\n/, '')
+    end
+    ignores.delete(path)
+    File.open($ignore_file, 'w+') do |file|
+      file.puts ignores
+    end
   end
 end
 
@@ -188,7 +220,9 @@ end
 def command_cmd(cmd)
   $configurations.each do |name, config|
     path = config['path']
-    system("echo #{path}; cd #{path}; #{cmd}")
+    puts "- Executing '#{cmd}' in #{path}"
+    exitCmd, output = execute(cmd, [], path, '')
+    puts output
   end
 end
 
@@ -196,7 +230,54 @@ def command_list
   print_configuration
 end
 
-load_configuration
+#########
+def normalize_url(url)
+  if url =~ /^\./
+    origin_url = `git config --get remote.origin.url`.chomp
+
+    unless origin_url =~ /^\w+:\/\//
+      if origin_url =~ /^([^:\/]+):([^:]+)/
+        origin_url = "ssh://#{$1}/#{$2}"
+      end
+    end
+
+    require 'uri'
+    uri = URI.parse URI.encode origin_url
+    uri.path = File.expand_path(url, uri.path)
+    uri.to_s
+  else
+    url
+  end
+end
+
+def execute(cmd, opts=[], path=Dir.getwd, redirect='2>&1')
+  opts = [opts].flatten.map {|s| escape(s) }.join(' ')
+  cmd = "#{cmd} #{opts} #{redirect}"
+
+  out = nil
+  if path && (Dir.getwd != path)
+    Dir.chdir(path) { out = execute_now(cmd) } 
+  else
+    out = execute_now(cmd)
+  end
+  return $?.exitstatus, out
+end
+
+def execute_now(cmd)
+  if block_given?
+    IO.popen(cmd)
+  else
+    `#{cmd}`.chomp
+  end
+end
+
+def escape(s)
+  escaped = s.to_s.gsub('\'', '\'\\\'\'')
+  %Q{"#{escaped}"}
+end
+#########
+
+load_configuration $externals_file
 
 command=ARGV[0]
 
