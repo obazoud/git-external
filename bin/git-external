@@ -70,7 +70,7 @@ def load_configuration(file)
   linesExit, lines = execute('git config', ['--list', '--file', file])
   lines.each do |line|
     if line =~ /^external\.([^$]+)\.([^=]+)=(.*)$/
-      $configurations[$1.chomp] ||= {}
+      $configurations[$1.chomp] ||= {'revision' => false}
       $configurations[$1.chomp][$2.chomp] = $3.chomp
     end
   end
@@ -100,35 +100,47 @@ def branch_exists(path, branch)
     return result
 end
 
-def init_external(url, path, branch='master')
+def init_external(url, path, branch='origin/master', revision=nil)
   require 'fileutils'
   if File.directory? "#{path}/.git"
     puts "- Repository already exists"
-  else
-    FileUtils.makedirs File.dirname(path)
-    url = normalize_url url
-    execute('git clone', ["#{url}", path], Dir.getwd, '')
+    
+    return
+  end
+    
+  url = normalize_url url
+  execute('git clone', ["#{url}", path], Dir.getwd, '')
+    
+  if not revision
+    remoteName, remoteBranch = branch.split('/')
 
     # Create a local tracking branch if it doesn't exist already
     unless branch_exists(path, branch)
-      puts "- Creating local tracking branch: #{branch} -> origin/#{branch}"
-      execute('git branch', ['checkout',  '--track', "#{branch}", "origin/#{branch}"], path)
+      puts "- Creating local tracking branch: #{branch} -> #{remoteBranch}"
+      execute('git branch', ['checkout',  '--track', "#{remoteBranch}", "#{branch}"], path)
     end
-
-    # Check out the local branch
-    puts "- Checkout local branch: #{branch}"
-    execute('git checkout', ["#{branch}"], path)
+    
+    update_external(url, path, branch, revision)
+    
+  else
+    puts "- Dealing with a tag/sha1: #{branch}"
+    update_external(url, path, branch, revision)
   end
+  
 end
 
-def update_external(url, path, branch='master')
+def update_external(url, path, branch='origin/master', revision=nil)
   require 'fileutils'
   puts "- Updating #{path}"
   if File.directory? "#{path}/.git"
     if uncommitted_changes?(path)
       puts "#{path} - uncommitted changes detected, can not update repository"
+    elsif revision
+      puts "#{path} - updating to revision:#{revision}"
+      execute('git checkout', [revision], path, '')
     else
-      execute('git pull', ['origin', "#{branch}"], path, '')
+      puts "#{path} - updating branch #{branch}"
+      execute('git pull', ['--rebase'], path, '')
     end
   end
 end
@@ -136,11 +148,19 @@ end
 def command_status
   ok = 0
   broken = 0
+  unknown = 0
   $configurations.each do |name, config|
     branch = config["branch"]
     url = config["url"]
     path = config["path"]
+    revision = config["revision"]
 
+    # not implemented yet
+    if revision
+      unknown += 1
+      next
+    end
+        
     symbolicExit, symbolic = execute('git symbolic-ref', ['HEAD', '--short'], path)
     gitBranchExit, gitBranch = execute('git config', ["branch.#{symbolic}.merge"], path)
     gitBranch = gitBranch.gsub('refs/heads/', '')
@@ -153,11 +173,13 @@ def command_status
       changesString = ""
     end
 
+    remoteBranch = remote + "/" + gitBranch
+    
     if gitBranchExit != 0 && gitBranchExit != 1 && gitRemoteExit != 0 && gitRemoteExit != 1
       puts "  ✗ #{path} -- exit code #{gitBranchExit}, #{gitRemoteExit}"
       broken += 1
     else
-      if branch == gitBranch
+      if branch == remoteBranch
         if url == gitRemote
           puts "  ✓ #{path} #{changesString}"
           ok += 1
@@ -166,15 +188,16 @@ def command_status
           broken +=1
         end
       else
-        puts "  ✗ #{path} #{changesString} -- expected branch '#{branch}' but was '#{gitBranch}'"
+        puts " ✗ #{path} #{changesString} -- expected branch '#{branch}' but was '#{remoteBranch}'"
         broken +=1
       end
     end
   end
-  puts "#{broken > 0 ? "✗" : "✓"} » #{ok} ok • #{broken} broken"
+  
+  puts "#{broken > 0 ? "✗" : "✓"} » #{ok} ok • #{broken} broken - #{unknown} unknown"
 end
 
-def command_add(url, path, branch='master')
+def command_add(url, path, branch='origin/master')
   command_rm(path)
   execute('git config', ['--file', $externals_file, '--add', "external.#{path}.path", "#{path}"])
   execute('git config', ['--file', $externals_file, '--add', "external.#{path}.url", "#{url}"])
@@ -190,6 +213,7 @@ def command_rm(path)
   execute('git config', ['--file', $externals_file, '--unset', "external.#{path}.path"])
   execute('git config', ['--file', $externals_file, '--unset', "external.#{path}.url"])
   execute('git config', ['--file', $externals_file, '--unset', "external.#{path}.branch"])
+  execute('git config', ['--file', $externals_file, '--unset', "external.#{path}.revision"])
   execute('git config', ['--file', $externals_file, '--remove-section', "external.#{path}"])
 
   if File.file? $ignore_file
@@ -207,13 +231,13 @@ end
 def command_init
   $configurations.each do |name, config|
     puts name
-    init_external config["url"], config["path"], config["branch"]
+    init_external config["url"], config["path"], config["branch"], config['revision']
   end
 end
 
 def command_update
   $configurations.each do |name, config|
-    update_external config["url"], config["path"], config["branch"]
+    update_external config["url"], config["path"], config["branch"], config['revision']
   end
 end
 
@@ -268,7 +292,7 @@ command=ARGV[0]
 
 case command
 when "status" then command_status
-when "add" then command_add ARGV[1], ARGV[2], ARGV[3] || "master"
+when "add" then command_add ARGV[1], ARGV[2], ARGV[3] || "origin/master"
 when "rm" then command_rm ARGV[1]
 when "init" then command_init
 when "update" then command_update
