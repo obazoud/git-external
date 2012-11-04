@@ -9,6 +9,10 @@ attach to an specific commit
 * gem
 * git
 
+## Dependencies
+
+* gem install rubygems
+
 ## Usage
 
 Setup a new git repository:
@@ -64,7 +68,7 @@ git external rm <path>
 git clone git://github.com/obazoud/git-external.git
 cd git-external
 git checkout develop
-gem build obazoud-git-external.gemspec && gem install obazoud-git-external-0.4.0.gem --no-ri --no-rdoc
+gem build obazoud-git-external.gemspec && gem install obazoud-git-external-0.4.0.gem
 </pre>
 
 And voilà!

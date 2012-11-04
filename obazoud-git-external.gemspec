@@ -9,7 +9,8 @@ Gem::Specification.new do |s|
   s.summary = "Git version of an svn:external, an alternative to Git Submodule"
   s.description = "Extension for git which adds a command providing similar functionality to git submodules but without attaching each module to a single version"
 
-  s.executables = ['git-external']
+  s.files = `git ls-files`.split("\n")
+  s.executables = `git ls-files`.split("\n").map{|f| f[/^bin\/(.*)/, 1]}.compact
 
   s.required_ruby_version = '~> 1.8.7'
 

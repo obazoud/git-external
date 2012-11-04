@@ -2,6 +2,8 @@
 # encoding: utf-8
 
 require 'rbconfig'
+require 'rubygems'
+require 'optparse'
 
 module OS
   class << self
@@ -54,15 +56,7 @@ else
 end
 
 $configurations = {}
-
-def usage
-  puts "Usage: git external add <repository-url> <path> [<branch>]"
-  puts "   or: git external status"
-  puts "   or: git external init [--] [<path>...]"
-  puts "   or: git external update [--] [<path>...]"
-  puts "   or: git external cmd '<command>'"
-  puts "   or: git external list"
-end
+$options = {}
 
 # Load .gitexternals
 def load_configuration(file)
@@ -254,6 +248,12 @@ def command_list
   print_configuration
 end
 
+def message(message)
+  if $options[:verbose]
+    puts message
+  end
+end
+
 #########
 def normalize_url(url)
   url
@@ -286,18 +286,147 @@ def escape(s)
 end
 #########
 
-load_configuration $externals_file
+def parse(args)
+  args = {}
+  subtext = "
+  Commands are:
+     add     :  setup a new 'external' repository
+     cmd     :  execute a command over 'external' repository
+     init    :  initialize (aka git clone) external repositories
+     list    :  dump configuration of your repository
+     rm      :  remove an external repository
+     status  :  status of your repository
+     update  :  update (aka git pull) existing repositories to the latest version
 
-command=ARGV[0]
+  See 'git external COMMAND --help' for more information on a specific command."
 
-case command
-when "status" then command_status
-when "add" then command_add ARGV[1], ARGV[2], ARGV[3] || "origin/master"
-when "rm" then command_rm ARGV[1]
-when "init" then command_init
-when "update" then command_update
-when "cmd" then command_cmd ARGV[1]
-when "list" then command_list
-else usage
+  global = OptionParser.new do |opts|
+    opts.banner = "
+      Usage: git external [options] [subcommand [options]]
+      #{subtext}
+    "
+    opts.on("-v", "--[no-]verbose", "Run verbosely") do |verbose|
+      $options[:verbose] = verbose
+    end
+    opts.on("--version", "Show version") do |version|
+      $options[:version] = version
+    end
+    opts.on_tail("-h","--help","help") do
+      puts opts
+      exit
+    end
+  end
+
+  subcommands = { 
+    'add' => OptionParser.new do |opts|
+      opts.banner = "Usage: add repository-url path [branch]"
+      opts.separator ""
+      args['add'] = 2
+    end,
+    'cmd' => OptionParser.new do |opts|
+      opts.banner = "Usage: cmd command"
+      opts.separator ""
+      args['cmd'] = 1
+    end,
+    'init' => OptionParser.new do |opts|
+      opts.banner = "Usage: init"
+      opts.separator ""
+      args['init'] = 0
+    end,
+    'list' => OptionParser.new do |opts|
+      opts.banner = "Usage: list"
+      opts.separator ""
+      args['list'] = 0
+    end,
+    'rm' => OptionParser.new do |opts|
+      opts.banner = "Usage: rm path"
+      opts.separator ""
+      args['rm'] = 1
+    end,
+    'status' => OptionParser.new do |opts|
+      opts.banner = "Usage: status"
+      opts.separator ""
+      args['status'] = 0
+    end,
+    'update' => OptionParser.new do |opts|
+      opts.banner = "Usage: update"
+      opts.separator ""
+      args['update'] = 0
+    end
+  }
+
+  if ARGV.empty?
+    puts global
+    exit -1
+  end
+
+  begin
+    global.order!
+  rescue OptionParser::InvalidOption => e
+    puts e.message
+    puts global
+    exit 1
+  end
+  
+  if $options[:version]
+    gemspecFile = File.expand_path File.join(File.dirname(__FILE__), "..", "obazoud-git-external.gemspec")
+    message "- Reading #{gemspecFile}"
+    spec = Gem::Specification::load(gemspecFile)
+    puts "git external #{spec.version}"
+    message "For more information, please visit #{spec.homepage}"
+    exit 0
+  end
+
+  command = ARGV.shift
+  
+  if command.nil?
+    puts global
+    puts subtext
+    exit 1
+  end
+
+  if subcommands[command].nil?
+    puts "Invalid subcommand"
+    puts global
+    exit 1
+  end
+
+  begin
+    subcommands[command].order!
+  rescue OptionParser::InvalidOption => e
+    puts e.message
+    puts global
+    exit 1
+  end
+
+  if ($options[:verbose])
+    puts "Command: #{command} "
+    p $options
+    puts "ARGV:"
+    p ARGV
+    subcommands.inspect
+  end
+
+  if ARGV.length < args[command]
+    puts "Wrong argument, expected #{args[command]} but was #{ARGV.length}"
+    puts subcommands[command]
+  else
+    begin
+      if ARGV.empty?
+        send "command_#{command}"
+      else
+        send "command_#{command}", *ARGV
+      end
+    rescue ArgumentError => e
+      puts e.message
+      puts global
+      exit 1
+  end
+  end
 end
 
+#########
+
+load_configuration $externals_file
+
+parse(ARGV)

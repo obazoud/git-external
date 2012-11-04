@@ -10,13 +10,13 @@ git external
 
 git external list
 
-git external add git://github.com/obazoud/statusdashboard.git projects/statusdashboard master
+git external add git://github.com/obazoud/statusdashboard.git projects/statusdashboard origin/master
 cat .gitignore
 cat .gitexternals
-git external add git://github.com/obazoud/statusdashboard-client.git projects/statusdashboard-client master
+git external add git://github.com/obazoud/statusdashboard-client.git projects/statusdashboard-client origin/master
 cat .gitignore
 cat .gitexternals
-git external add git://github.com/obazoud/statusdashboard-chrome.git projects/statusdashboard-chrome master
+git external add git://github.com/obazoud/statusdashboard-chrome.git projects/statusdashboard-chrome origin/master
 cat .gitignore
 cat .gitexternals
 
