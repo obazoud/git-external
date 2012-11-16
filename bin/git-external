@@ -86,6 +86,12 @@ def uncommitted_changes?(path)
   return ((diffExit == 1) ? true : false)
 end
 
+# Check for untracked files
+def untracked_files?(path)
+  untrackedExit, untracked = execute('git ls-files', ['--others', '--exclude-standard'], path)
+  return ((untrackedExit == 1 || untracked.length > 0) ? true : false)
+end
+
 # Check if a branch exists
 def branch_exists(path, branch)
     branchesExit, branches = execute('git branch', [], path)
@@ -167,6 +173,12 @@ def command_status
       changesString = ""
     end
 
+    if untracked_files?(path)
+      untrackedString = "(Untracked Files) "
+    else
+      untrackedString = ""
+    end
+
     remoteBranch = remote + "/" + gitBranch
     
     if gitBranchExit != 0 && gitBranchExit != 1 && gitRemoteExit != 0 && gitRemoteExit != 1
@@ -175,14 +187,14 @@ def command_status
     else
       if branch == remoteBranch
         if url == gitRemote
-          puts "  ✓ #{path} #{changesString}"
+          puts "  ✓ #{path} #{changesString} #{untrackedString}"
           ok += 1
         else
-          puts "  ✗ #{path} #{changesString} -- expected url '#{url}' but was '#{gitRemote}'"
+          puts "  ✗ #{path} #{changesString} #{untrackedString} -- expected url '#{url}' but was '#{gitRemote}'"
           broken +=1
         end
       else
-        puts " ✗ #{path} #{changesString} -- expected branch '#{branch}' but was '#{remoteBranch}'"
+        puts " ✗ #{path} #{changesString} #{untrackedString} -- expected branch '#{branch}' but was '#{remoteBranch}'"
         broken +=1
       end
     end
