@@ -1,7 +1,7 @@
 # -*- encoding: utf-8 -*-
 Gem::Specification.new do |s|
   s.name = 'obazoud-git-external'
-  s.version = '0.7.0'
+  s.version = '0.8.0'
   s.platform = Gem::Platform::RUBY
   s.authors = ['Daniel Cestari', 'Olivier Bazoud', 'Alastair Harrison']
   s.email = ["olivier.bazoud@gmail.com"]
