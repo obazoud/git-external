@@ -92,6 +92,21 @@ def untracked_files?(path)
   return ((untrackedExit == 1 || untracked.length > 0) ? true : false)
 end
 
+# find how many commits we are ahead/behind our upstream
+def ahead_behind_upstream(path)
+  upstreamExit, upstream = execute('git rev-list', ['--count', '--left-right', '@{upstream}...HEAD'], path, '2> /dev/null')
+  return "" if upstreamExit != 0
+  behind, ahead = upstream.match(/^(\d*)\t(\d*)$/).captures
+  my_str = ""
+  if Integer(behind) > 0 && Integer(ahead) > 0
+    my_str << "(u"
+    my_str << "+#{ahead}" if Integer(ahead) > 0
+    my_str << "-#{behind}" if Integer(behind) > 0
+    my_str << ")"
+  end
+  my_str
+end
+
 # Check if a branch exists
 def branch_exists(path, branch)
     branchesExit, branches = execute('git branch', [], path)
@@ -179,6 +194,8 @@ def command_status
       untrackedString = ""
     end
 
+    upstream = ahead_behind_upstream(path)
+
     remoteBranch = remote + "/" + gitBranch
     
     if gitBranchExit != 0 && gitBranchExit != 1 && gitRemoteExit != 0 && gitRemoteExit != 1
@@ -187,14 +204,14 @@ def command_status
     else
       if branch == remoteBranch
         if url == gitRemote
-          puts "  ✓ #{path} #{changesString} #{untrackedString}"
+          puts "  ✓ #{path} #{upstream} #{changesString} #{untrackedString}"
           ok += 1
         else
-          puts "  ✗ #{path} #{changesString} #{untrackedString} -- expected url '#{url}' but was '#{gitRemote}'"
+          puts "  ✗ #{path} #{upstream} #{changesString} #{untrackedString} -- expected url '#{url}' but was '#{gitRemote}'"
           broken +=1
         end
       else
-        puts " ✗ #{path} #{changesString} #{untrackedString} -- expected branch '#{branch}' but was '#{remoteBranch}'"
+        puts " ✗ #{path} #{upstream} #{changesString} #{untrackedString} -- expected branch '#{branch}' but was '#{remoteBranch}'"
         broken +=1
       end
     end
