@@ -12,7 +12,5 @@ Gem::Specification.new do |s|
   s.files = `git ls-files`.split("\n")
   s.executables = `git ls-files`.split("\n").map{|f| f[/^bin\/(.*)/, 1]}.compact
 
-  s.required_ruby_version = '~> 1.8.7'
-
 end
 

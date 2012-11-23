@@ -62,7 +62,7 @@ $options = {}
 def load_configuration(file)
   $configurations = {}
   linesExit, lines = execute('git config', ['--list', '--file', file])
-  lines.each do |line|
+  lines.each_line do |line|
     if line =~ /^external\.([^$]+)\.([^=]+)=(.*)$/
       $configurations[$1.chomp] ||= {'revision' => false}
       $configurations[$1.chomp][$2.chomp] = $3.chomp

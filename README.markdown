@@ -5,7 +5,7 @@ attach to an specific commit
 
 ## Requiments
 
-* ruby 1.8.7
+* ruby 1.8 or 1.9
 * gem
 * git
 
