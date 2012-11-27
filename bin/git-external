@@ -151,7 +151,11 @@ def update_external(url, path, branch='origin/master', revision=nil)
     if uncommitted_changes?(path)
       puts "#{path} - uncommitted changes detected, can not update repository"
     elsif revision
-      puts "#{path} - updating to revision:#{revision}"
+      puts "#{path} - updating to revision: #{revision}"
+      
+      remoteName, = branch.split('/')
+
+      execute('git fetch', [remoteName], path, '')
       execute('git checkout', [revision], path, '')
     else
       puts "#{path} - updating branch #{branch}"
