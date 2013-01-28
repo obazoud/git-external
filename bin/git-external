@@ -135,7 +135,8 @@ def init_external(url, path, branch='origin/master', revision=nil)
       execute('git branch', ['checkout',  '--track', "#{remoteBranch}", "#{branch}"], path)
     end
     
-    update_external(url, path, branch, revision)
+    puts "- Checkout local branch: #{remoteBranch}"
+    execute('git checkout', ["#{remoteBranch}"], path)
     
   else
     puts "- Dealing with a tag/sha1: #{branch}"
